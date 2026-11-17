@@ -161,26 +161,71 @@ python -m scripts.predict --config "$run/config.yaml" --checkpoint "$run/best_io
 
 ## 6. 设置并运行模块消融
 
-课堂使用两轮 E0 基底，矩阵为每组覆盖模块开关和损失权重。E0 与 E1 对比 MDCC，E7 与 E8 对比额外的 Edge Loss。四组使用相同划分、预训练编码器、种子、训练预算与验证协议。
+### E0–E10 消融矩阵
+
+所有组以 E0 的 ResNet34–UNet 为基底，BCE 和 Dice 权重均为 1。各组使用相同的划分、预训练编码器、种子、训练预算与验证协议。[矩阵配置](configs/ablation.yaml)
+
+模块列中 `√` 表示启用，`-` 表示未启用。
+
+| 实验 | MDCC | BGGF | BoundaryHead | clDice 权重 | Edge Loss 权重 |
+|---|---|---|---|---:|---:|
+| E0 | - | - | - | 0 | 0 |
+| E1 | √ | - | - | 0 | 0 |
+| E2 | - | √ | √ | 0 | 0 |
+| E3 | - | - | - | 0.2 | 0 |
+| E4 | √ | √ | √ | 0 | 0 |
+| E5 | √ | - | - | 0.2 | 0 |
+| E6 | - | √ | √ | 0.2 | 0 |
+| E7 | √ | √ | √ | 0.2 | 0 |
+| E8 | √ | √ | √ | 0.2 | 0.1 |
+| E9 | - | - | √ | 0 | 0.1 |
+| E10 | - | √ | √ | 0 | 0.1 |
+
+E0 与 E1 对比 MDCC，E7 与 E8 对比额外的 Edge Loss，E9 与 E10 对比同样边界监督下的 BGGF。E2、E4、E6、E7 都有供 BGGF 使用的边界预测，Edge Loss 权重为 0。
+
+### 选择运行范围
+
+完成第 3 节的数据与权重准备后，在仓库根目录使用同一个 PowerShell 窗口。课堂配置给各组两轮预算，默认种子为 42。
 
 ```powershell
+$ablationRoot = 'results/tutorial/ablation_2epochs'
 $matrixArgs = @(
   '--matrix', 'configs/ablation.yaml',
   '--base-config', 'configs/tutorial/local_e0_warmup.yaml',
-  '--experiments', 'E0,E1,E7,E8',
-  '--output-root', 'results/tutorial/ablation_2epochs'
+  '--output-root', $ablationRoot
 )
-python -m scripts.run_ablation @matrixArgs --dry-run
 ```
 
-检查 `E0_seed42`、`E1_seed42`、`E7_seed42` 和 `E8_seed42` 的 `planned_config.yaml`。核对开关后运行。同一命令也用于恢复未完成的组。
+按需选择一条命令生成计划。省略 `--experiments` 时默认选择 E0。单组可以将 E0 换为 E1 至 E10 的任意组号。自选多组时，用逗号分隔组号并给整串加引号。
 
 ```powershell
-python -m scripts.run_ablation @matrixArgs --resume
-python -m scripts.summarize_results --root results/tutorial/ablation_2epochs --output results/tutorial/ablation_2epochs_summary --split val
+# 单独跑基线
+python -m scripts.run_ablation @matrixArgs --experiments E0 --dry-run
+# 跑完整的 E0–E10，共 11 组
+python -m scripts.run_ablation @matrixArgs --experiments core --dry-run
+# 自选对照组
+python -m scripts.run_ablation @matrixArgs --experiments 'E7,E8' --dry-run
 ```
 
-`--dry-run` 只生成方案。正式运行生成训练产物、验证结果和开销记录。查看固定阈值下的指标时读取 `validation_best.json`。`val_metrics.json` 与汇总 CSV 使用各组在验证集选出的阈值，比较时把阈值一并记录。锁定待报告的模型和指标口径后，按第 5 节对相应组冻结并评价测试集。
+检查各组的 `planned_config.yaml`。选 `core` 时应看到 `E0_seed42` 到 `E10_seed42` 共 11 个计划目录。核对配置后执行对应范围的训练命令。
+
+```powershell
+python -m scripts.run_ablation @matrixArgs --experiments E0 --resume
+python -m scripts.run_ablation @matrixArgs --experiments core --resume
+python -m scripts.run_ablation @matrixArgs --experiments 'E7,E8' --resume
+```
+
+`--resume` 启动新组或恢复未完成的组，也会复用配置完全相同的已完成组的最佳权重。可以先跑 E0，再用同一输出目录运行 `core`。正式实验可把基底换成 `configs/tutorial/local_e0.yaml`，使用新结果目录，并为计划与训练命令同时加上 `--seeds '42,123,3407'`。
+
+### 汇总与评价
+
+训练完成后汇总该目录下已生成的验证结果。只汇总单组时可将 `--root` 指向相应的 run 目录。
+
+```powershell
+python -m scripts.summarize_results --root $ablationRoot --output "${ablationRoot}_summary" --split val
+```
+
+各组的 `execution.json` 记录完成状态。固定阈值的指标在 `validation_best.json`。`val_metrics.json` 与汇总 CSV 使用各组在验证集选出的阈值，比较时把阈值一并记录。锁定待报告的模型和指标口径后，将第 5 节的 `$run` 指向待评价的实验组，例如 `$ablationRoot/E8_seed42`，再冻结并测试。
 
 只有 CPU 时，可以用第 2 节生成的 E0 配置作为共同基底，在同一 checkout 执行 E0 和 E1 两组。
 
@@ -188,7 +233,7 @@ python -m scripts.summarize_results --root results/tutorial/ablation_2epochs --o
 python -m scripts.run_ablation --matrix configs/ablation.yaml --base-config results/tutorial/smoke_first/E0_seed42/config.yaml --experiments 'E0,E1' --output-root results/tutorial/ablation_cpu --resume
 ```
 
-这条路线在相同合成数据和一轮预算下演示对照设置。正式数据实验可用 `--seeds '42,123,3407'` 补充种子，记录每次运行的数据划分、实际轮数、分割与边界指标。
+这条路线在相同合成数据和一轮预算下演示对照设置。
 
 ## 运行时常见卡点
 
