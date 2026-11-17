@@ -1,0 +1,8 @@
+extends: baseline.yaml
+experiment: E8
+output_dir: ../results/ablation/baseline/E8_seed42
+model:
+  context: mdcc
+  fusion: bggf
+  boundary_head: true
+loss: {cldice: 0.2, edge: 0.1}

@@ -1,0 +1,7 @@
+# Teaching config. Keep under project configs/tutorial/.
+extends: local_e8.yaml
+experiment: tutorial_E8_2epochs
+output_dir: ../../results/tutorial/local_E8_2epochs_seed42
+train:
+  epochs: 2
+  early_stopping_patience: 0

@@ -1,0 +1,7 @@
+# Plain baseline shared by the two-epoch ablation demonstration.
+extends: local_e0.yaml
+experiment: tutorial_E0_2epochs
+output_dir: ../../results/tutorial/local_E0_2epochs_seed42
+train:
+  epochs: 2
+  early_stopping_patience: 0

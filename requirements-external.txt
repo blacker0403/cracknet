@@ -1,0 +1,4 @@
+-r requirements.txt
+segmentation-models-pytorch==0.5.0
+timm==1.0.15
+huggingface-hub==0.30.2

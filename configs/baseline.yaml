@@ -1,0 +1,73 @@
+# Single training entry point: reviewed CRACK500 crops, shared by E0 and ablations.
+experiment: E0
+seed: 42
+output_dir: ../results/ablation/baseline/E0_seed42
+data:
+  root: ../data/CRACK500
+  manifest_dir: ../data/CRACK500/manifests
+  version: archive_crops_scene_disjoint_reviewed_v2_standard_layout_v1
+  synthetic: false
+  splits:
+    train: {images: train/images, masks: train/masks}
+    val: {images: val/images, masks: val/masks}
+    test: {images: test/images, masks: test/masks}
+  image_glob: '*.jpg'
+  mask_pattern: '{stem}.png'
+  source_id_regex: '(?P<source>.+)_\d+_\d+'
+  label_map: null
+  require_source_ids: true
+  fixed_manifests: true
+  split_lists: null
+  split_path_map: null
+  crop_size: 384
+  foreground_crop_probability: 0.5
+  augment: true
+  workers: 2
+model:
+  name: resunet34
+  pretrained: true
+  weights_dir: ../weights
+  weights_file: null
+  context: none
+  context_layers: [3, 4]
+  context_width_ratio: 0.25
+  fusion: concat
+  fusion_scales: [4, 8]
+  boundary_head: false
+  norm: batch
+loss:
+  bce: 1.0
+  dice: 1.0
+  cldice: 0.0
+  edge: 0.0
+  pos_weight: null
+  skeleton_iterations: 10
+  edge_kernel: 3
+  dice_reduction: sample
+train:
+  device: cuda
+  epochs: 150
+  batch_size: 16
+  accumulation_steps: 1
+  lr: 0.0001
+  weight_decay: 0.0001
+  amp: true
+  clip_grad: 1.0
+  early_stopping_patience: 30
+  deterministic: true
+  cpu_threads: 4
+logging:
+  plots: true
+  plot_every: 5
+  train_batches: 3
+  val_samples: 4
+  histogram_every: 10
+evaluation:
+  window: 512
+  overlap: 128
+  threshold: 0.5
+  threshold_grid: [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95]
+  boundary_tolerance: 2
+  empty_score: 1.0
+  auprc_bins: 4096
+  visualization_count: 6

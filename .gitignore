@@ -1,0 +1,16 @@
+/data/
+/weights/
+/results/
+/logs/
+/.venv/
+/.pytest_cache/
+/.idea/
+/.vscode/
+__pycache__/
+*.py[cod]
+*.pth
+*.pt
+*.ckpt
+.env
+.env.*
+.DS_Store

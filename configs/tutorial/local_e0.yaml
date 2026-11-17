@@ -1,0 +1,12 @@
+# Teaching config. Keep under project configs/tutorial/.
+extends: ../baseline.yaml
+experiment: tutorial_E0
+output_dir: ../../results/tutorial/local_E0_seed42
+data:
+  workers: 0
+train:
+  batch_size: 4
+  accumulation_steps: 4
+  amp_dtype: float16
+evaluation:
+  window_batch_size: 1

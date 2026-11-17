@@ -1,0 +1,46 @@
+base: baseline.yaml
+output_root: ../results/ablation/baseline
+development_seeds: [42]
+formal_seeds: [42, 123, 3407]
+# BGGF means centered by default. B5/B7 explicitly test the enhancement-only form.
+experiments:
+  E0: {}
+  E1: {model: {context: mdcc}}
+  E2: {model: {fusion: bggf, boundary_head: true}}
+  E3: {loss: {cldice: 0.2}}
+  E4: {model: {context: mdcc, fusion: bggf, boundary_head: true}}
+  E5: {model: {context: mdcc}, loss: {cldice: 0.2}}
+  E6: {model: {fusion: bggf, boundary_head: true}, loss: {cldice: 0.2}}
+  E7: {model: {context: mdcc, fusion: bggf, boundary_head: true}, loss: {cldice: 0.2}}
+  E8: {model: {context: mdcc, fusion: bggf, boundary_head: true}, loss: {cldice: 0.2, edge: 0.1}}
+  E9: {model: {boundary_head: true}, loss: {edge: 0.1}}
+  E10: {model: {fusion: bggf, boundary_head: true}, loss: {edge: 0.1}}
+  E11: {alias_of: E5}
+  A0: {}
+  A1: {model: {context: local}}
+  A2: {model: {context: directional}}
+  A3: {model: {context: dilated}}
+  A4: {model: {context: mdcc}}
+  A5: {model: {context: aspp}}
+  B0: {}
+  B1: {model: {fusion: se}}
+  B2: {model: {fusion: cbam}}
+  B3: {model: {fusion: attention}}
+  B4: {model: {fusion: edge_concat, boundary_head: true}}
+  B5: {model: {fusion: bggf_uncentered, boundary_head: true}}
+  B6: {model: {boundary_head: true}, loss: {edge: 0.1}}
+  B7: {model: {fusion: bggf_uncentered, boundary_head: true}, loss: {edge: 0.1}}
+  B8: {model: {fusion: bggf, boundary_head: true}, loss: {edge: 0.1}}
+  L0: {loss: {dice: 0.0}}
+  L1: {}
+  L2: {loss: {cldice: 0.2}}
+  L3: {model: {boundary_head: true}, loss: {edge: 0.1}}
+  L4: {model: {boundary_head: true}, loss: {cldice: 0.2, edge: 0.1}}
+  DeepLabV3Plus: {model: {name: deeplabv3plus}}
+# Full structure fixed across every weight/iteration sensitivity experiment,
+# including edge_head/gating when either loss weight is zero.
+sensitivity:
+  structure: {model: {context: mdcc, fusion: bggf, boundary_head: true}, loss: {cldice: 0.2, edge: 0.1}}
+  cldice: [0.0, 0.1, 0.2, 0.3, 0.5]
+  edge: [0.0, 0.05, 0.1, 0.2]
+  skeleton_iterations: [5, 10, 20]

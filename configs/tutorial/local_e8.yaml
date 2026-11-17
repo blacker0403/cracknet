@@ -1,0 +1,12 @@
+# Teaching config. Keep under project configs/tutorial/.
+extends: local_e0.yaml
+experiment: tutorial_E8
+output_dir: ../../results/tutorial/local_E8_seed42
+model:
+  context: mdcc
+  fusion: bggf
+  boundary_head: true
+  dropout: 0.0
+loss:
+  cldice: 0.2
+  edge: 0.1
