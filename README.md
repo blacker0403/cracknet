@@ -4,31 +4,32 @@
 
 ## 1. 获取代码与安装环境
 
-以下命令使用 Windows PowerShell。先安装 Git 和 Conda，再从能够运行 `conda activate` 的 PowerShell 进入项目。
+先安装 Git 和 Anaconda。从 Windows 开始菜单打开 **Anaconda Prompt**，进入准备存放项目的目录，再逐行执行下面的命令。
 
-```powershell
+```bat
 git clone https://github.com/blacker0403/cracknet.git
-Set-Location cracknet
+cd cracknet
 conda create -n cracknet-study python=3.11 -y
 conda activate cracknet-study
-$env:PYTHONUTF8 = '1'
+chcp 65001 >nul
+set "PYTHONUTF8=1"
 ```
 
 CUDA 训练选用以下安装命令。先确认 NVIDIA 驱动支持对应的 wheel。
 
-```powershell
+```bat
 python -m pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
 ```
 
 使用 CPU 跟练时选用这一条。
 
-```powershell
+```bat
 python -m pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
 ```
 
-安装项目依赖并检查解释器。CUDA 路线要求最后一项输出为 `True`。每次新开终端都重新激活环境，设置 `PYTHONUTF8` 并进入仓库根目录。
+安装项目依赖并检查解释器。CUDA 路线要求最后一项输出为 `True`。每次新开窗口都重新激活环境，按上面的写法设置 UTF-8，并用 `cd /d` 加仓库路径进入根目录。
 
-```powershell
+```bat
 python -m pip install -r requirements.txt
 python -m pip check
 python -c "import sys, torch, torchvision; print(sys.executable); print(torch.__version__, torchvision.__version__); print(torch.version.cuda, torch.cuda.is_available())"
@@ -38,16 +39,16 @@ python -c "import sys, torch, torchvision; print(sys.executable); print(torch.__
 
 ## 2. 用合成数据跑一次 CPU 全流程
 
-```powershell
-python -m scripts.smoke_test --output results/tutorial/smoke_first
-Get-Content -Encoding UTF8 results/tutorial/smoke_first/smoke_status.json
+```bat
+python -m scripts.smoke_test --output "results\tutorial\smoke_first"
+type "results\tutorial\smoke_first\smoke_status.json"
 ```
 
 检查 `passed` 和 `synthetic_only` 都为 `true`。脚本生成带标签的小图，完成 E0 训练和 E8 停训、续训、冻结、测试与推理。在 `E8_seed42/` 看检查点和指标，在 `E8_predictions/` 看推理输出。再次执行时使用新目录，预留数 GB 磁盘空间存放检查点。合成数据的分数用于检查流程。
 
 阅读网络时，可以用随机输入核对奇数尺寸。结构检查使用 CPU 并跳过预训练权重初始化。
 
-```powershell
+```bat
 python tutorial_tools/inspect_model.py --config configs/tutorial/local_e8.yaml --height 65 --width 91
 ```
 
@@ -75,7 +76,7 @@ JSONL 每行对应一对图像和标签。两个文件路径相对 `data/CRACK50
 
 从已划分的 JPG 和同名 PNG 扫描生成清单时，在 `configs/tutorial/local_e0.yaml` 的 `data` 下写入数据的 `version`，设置 `fixed_manifests: false` 并保留 `workers: 0`。默认文件名规则把 `road001_0_0` 识别成 `road001` 来源组。其他命名规则需要提供准确的 `data.source_id_regex`，也可以手工填写 manifest。E8 配置继承这个数据设置。
 
-```powershell
+```bat
 python -m datasets.inspect_dataset --config configs/tutorial/local_e0.yaml
 ```
 
@@ -83,35 +84,35 @@ python -m datasets.inspect_dataset --config configs/tutorial/local_e0.yaml
 
 预检检查本地权重文件。可从 torchvision 的权重地址下载一次。
 
-```powershell
-New-Item -ItemType Directory -Force weights | Out-Null
-Invoke-WebRequest -UseBasicParsing -Uri 'https://download.pytorch.org/models/resnet34-b627a593.pth' -OutFile 'weights/resnet34-b627a593.pth'
+```bat
+if not exist "weights" mkdir "weights"
+python -c "from urllib.request import urlretrieve; urlretrieve('https://download.pytorch.org/models/resnet34-b627a593.pth', 'weights/resnet34-b627a593.pth')"
 ```
 
 ## 4. 训练、续训与查看日志
 
 演练使用 E8 的两轮预算，实际遍历准备好的数据。它继承 384×384 裁剪、batch 4、梯度累积 4、FP16、AdamW 和初始学习率 0.0001。Windows 示例使用 `workers: 0`。
 
-```powershell
-$cfg = 'configs/tutorial/local_e8_warmup.yaml'
-$run = 'results/tutorial/local_E8_2epochs_seed42'
-python -m scripts.preflight --config $cfg --paths-only
-python -m scripts.preflight --config $cfg --require-cuda
+```bat
+set "CTN_CFG=configs\tutorial\local_e8_warmup.yaml"
+set "CTN_RUN=results\tutorial\local_E8_2epochs_seed42"
+python -m scripts.preflight --config "%CTN_CFG%" --paths-only
+python -m scripts.preflight --config "%CTN_CFG%" --require-cuda
 ```
 
-第一条检查数据根目录、清单和文件路径。第二条生成数据审计与 `preflight.json`，确认 `ready_for_training` 为 `true` 后再训练。可先用一次合成批次探测显存，输出保存在新的 JSON 文件中。
+带 `--paths-only` 的命令检查数据根目录、清单和文件路径。带 `--require-cuda` 的命令生成数据审计与 `preflight.json`，确认 `ready_for_training` 为 `true` 后再训练。可先用一次合成批次探测显存，输出保存在新的 JSON 文件中。
 
-```powershell
-python tutorial_tools/probe_model.py --config $cfg --output results/tutorial/first_gpu_probe.json
+```bat
+python tutorial_tools/probe_model.py --config "%CTN_CFG%" --output "results\tutorial\first_gpu_probe.json"
 ```
 
 跑完第 1 轮后退出，再从已经保存的 epoch 恢复。想连续完成两轮时，首次运行可以省略 `--stop-after-epoch 1`。
 
-```powershell
-python -m scripts.train --config $cfg --stop-after-epoch 1
-Get-Content -Encoding UTF8 "$run/training_status.json"
-python -m scripts.train --config "$run/config.yaml" --resume "$run/last.pth"
-Get-Content -Encoding UTF8 "$run/training_status.json"
+```bat
+python -m scripts.train --config "%CTN_CFG%" --stop-after-epoch 1
+type "%CTN_RUN%\training_status.json"
+python -m scripts.train --config "%CTN_RUN%\config.yaml" --resume "%CTN_RUN%\last.pth"
+type "%CTN_RUN%\training_status.json"
 ```
 
 | 产物 | 看什么 |
@@ -124,7 +125,7 @@ Get-Content -Encoding UTF8 "$run/training_status.json"
 
 在另一个已激活环境的终端打开 TensorBoard，浏览器访问 `http://127.0.0.1:6006`。
 
-```powershell
+```bat
 python -m tensorboard.main --logdir results/tutorial --host 127.0.0.1 --port 6006
 ```
 
@@ -132,29 +133,28 @@ python -m tensorboard.main --logdir results/tutorial --host 127.0.0.1 --port 600
 
 从已有 E8 分割权重开始一次微调时，将 `configs/tutorial/local_e8_warmup.yaml` 在同目录另存为 `local_e8_finetune.yaml`，把 `output_dir` 改成 `../../results/tutorial/local_E8_finetune_seed42`，在 `train` 下加一行 `lr: 0.00005`。沿用相同的模型结构，传入可信的、由本工程保存的检查点。
 
-```powershell
-python -m scripts.train --config configs/tutorial/local_e8_finetune.yaml --init-checkpoint "$run/best_iou.pth"
+```bat
+python -m scripts.train --config "configs\tutorial\local_e8_finetune.yaml" --init-checkpoint "%CTN_RUN%\best_iou.pth"
 ```
 
 新目录的 `initialization.json` 记录来源检查点。微调只加载已有模型参数，优化器、调度器和轮数重新初始化。
 
 ## 5. 冻结、测试与推理
 
-训练完成后先冻结。冻结在 val 上按 micro Dice 选阈值，并记录 best 检查点、配置和数据的指纹。test 使用这份冻结记录。下列命令继续使用上一节的 `$run`。
+训练完成后先冻结。冻结在 val 上按 micro Dice 选阈值，并记录 best 检查点、配置和数据的指纹。test 使用这份冻结记录。下列命令在同一个 Anaconda Prompt 窗口继续使用上一节设置的 `%CTN_RUN%`。
 
-```powershell
-python -m scripts.evaluate --config "$run/config.yaml" --checkpoint "$run/best_iou.pth" --freeze
-python -m scripts.evaluate --config "$run/config.yaml" --checkpoint "$run/best_iou.pth" --split test
-Get-Content -Encoding UTF8 "$run/frozen.json"
-Get-Content -Encoding UTF8 "$run/test_metrics.json"
+```bat
+python -m scripts.evaluate --config "%CTN_RUN%\config.yaml" --checkpoint "%CTN_RUN%\best_iou.pth" --freeze
+python -m scripts.evaluate --config "%CTN_RUN%\config.yaml" --checkpoint "%CTN_RUN%\best_iou.pth" --split test
+type "%CTN_RUN%\frozen.json"
+type "%CTN_RUN%\test_metrics.json"
 ```
 
-单图推理以清单中第一张测试图为例。也可以将 `--input` 指向自己的图片或图片目录，`--output` 使用独立的空目录。
+单图推理以清单中第一张测试图为例。`for /f` 从 JSONL 读取相对路径并存入 `CTN_IMAGE`，两行命令在 Anaconda Prompt 逐行执行。也可以直接把 `--input` 的值换成自己的图片或图片目录，`--output` 使用独立的空目录。
 
-```powershell
-$sample = Get-Content -Encoding UTF8 data/CRACK500/manifests/test.jsonl -TotalCount 1 | ConvertFrom-Json
-$image = Join-Path 'data/CRACK500' $sample.image
-python -m scripts.predict --config "$run/config.yaml" --checkpoint "$run/best_iou.pth" --input $image --output results/tutorial/prediction_first
+```bat
+for /f "delims=" %I in ('python -c "import json; print(json.loads(open('data/CRACK500/manifests/test.jsonl', encoding='utf-8').readline())['image'])"') do set "CTN_IMAGE=%I"
+python -m scripts.predict --config "%CTN_RUN%\config.yaml" --checkpoint "%CTN_RUN%\best_iou.pth" --input "data\CRACK500\%CTN_IMAGE%" --output "results\tutorial\prediction_first"
 ```
 
 同一 run 的 `config.yaml`、`best_iou.pth` 与 `frozen.json` 配套使用。`*.mask.png` 为二值裂缝图，`*.overlay.png` 显示叠加位置，`*.probability.npy` 保存像素分数，`prediction_summary.csv` 汇总图像尺寸、预测与耗时。带标签的质量指标查看 `test_metrics.json`。迁移资产用于推理时，可以在配置副本调整存储路径，模型和评价设置须符合冻结记录。
@@ -185,52 +185,48 @@ E0 与 E1 对比 MDCC，E7 与 E8 对比额外的 Edge Loss，E9 与 E10 对比�
 
 ### 选择运行范围
 
-完成第 3 节的数据与权重准备后，在仓库根目录使用同一个 PowerShell 窗口。课堂配置给各组两轮预算，默认种子为 42。
+完成第 3 节的数据与权重准备后，在仓库根目录使用同一个 Anaconda Prompt 窗口。课堂配置给各组两轮预算，默认种子为 42。
 
-```powershell
-$ablationRoot = 'results/tutorial/ablation_2epochs'
-$matrixArgs = @(
-  '--matrix', 'configs/ablation.yaml',
-  '--base-config', 'configs/tutorial/local_e0_warmup.yaml',
-  '--output-root', $ablationRoot
-)
+```bat
+set "CTN_ABLATION_BASE=configs\tutorial\local_e0_warmup.yaml"
+set "CTN_ABLATION_ROOT=results\tutorial\ablation_2epochs"
 ```
 
-按需选择一条命令生成计划。省略 `--experiments` 时默认选择 E0。单组可以将 E0 换为 E1 至 E10 的任意组号。自选多组时，用逗号分隔组号并给整串加引号。
+按需选择一条命令生成计划。省略 `--experiments` 时默认选择 E0。单组可以将 E0 换为 E1 至 E10 的任意组号。自选多组时，用逗号分隔组号并用双引号包住整串。
 
-```powershell
-# 单独跑基线
-python -m scripts.run_ablation @matrixArgs --experiments E0 --dry-run
-# 跑完整的 E0–E10，共 11 组
-python -m scripts.run_ablation @matrixArgs --experiments core --dry-run
-# 自选对照组
-python -m scripts.run_ablation @matrixArgs --experiments 'E7,E8' --dry-run
+```bat
+rem 单独跑基线
+python -m scripts.run_ablation --matrix "configs\ablation.yaml" --base-config "%CTN_ABLATION_BASE%" --output-root "%CTN_ABLATION_ROOT%" --experiments E0 --dry-run
+rem 跑完整的 E0–E10，共 11 组
+python -m scripts.run_ablation --matrix "configs\ablation.yaml" --base-config "%CTN_ABLATION_BASE%" --output-root "%CTN_ABLATION_ROOT%" --experiments core --dry-run
+rem 自选对照组
+python -m scripts.run_ablation --matrix "configs\ablation.yaml" --base-config "%CTN_ABLATION_BASE%" --output-root "%CTN_ABLATION_ROOT%" --experiments "E7,E8" --dry-run
 ```
 
 检查各组的 `planned_config.yaml`。选 `core` 时应看到 `E0_seed42` 到 `E10_seed42` 共 11 个计划目录。核对配置后执行对应范围的训练命令。
 
-```powershell
-python -m scripts.run_ablation @matrixArgs --experiments E0 --resume
-python -m scripts.run_ablation @matrixArgs --experiments core --resume
-python -m scripts.run_ablation @matrixArgs --experiments 'E7,E8' --resume
+```bat
+python -m scripts.run_ablation --matrix "configs\ablation.yaml" --base-config "%CTN_ABLATION_BASE%" --output-root "%CTN_ABLATION_ROOT%" --experiments E0 --resume
+python -m scripts.run_ablation --matrix "configs\ablation.yaml" --base-config "%CTN_ABLATION_BASE%" --output-root "%CTN_ABLATION_ROOT%" --experiments core --resume
+python -m scripts.run_ablation --matrix "configs\ablation.yaml" --base-config "%CTN_ABLATION_BASE%" --output-root "%CTN_ABLATION_ROOT%" --experiments "E7,E8" --resume
 ```
 
-`--resume` 启动新组或恢复未完成的组，也会复用配置完全相同的已完成组的最佳权重。可以先跑 E0，再用同一输出目录运行 `core`。正式实验可把基底换成 `configs/tutorial/local_e0.yaml`，使用新结果目录，并为计划与训练命令同时加上 `--seeds '42,123,3407'`。
+`--resume` 启动新组或恢复未完成的组，也会复用配置完全相同的已完成组的最佳权重。可以先跑 E0，再用同一输出目录运行 `core`。正式实验可将 `CTN_ABLATION_BASE` 改为 `configs\tutorial\local_e0.yaml`，用 `CTN_ABLATION_ROOT` 指定新结果目录，并为计划与训练命令同时加上 `--seeds "42,123,3407"`。
 
 ### 汇总与评价
 
 训练完成后汇总该目录下已生成的验证结果。只汇总单组时可将 `--root` 指向相应的 run 目录。
 
-```powershell
-python -m scripts.summarize_results --root $ablationRoot --output "${ablationRoot}_summary" --split val
+```bat
+python -m scripts.summarize_results --root "%CTN_ABLATION_ROOT%" --output "%CTN_ABLATION_ROOT%_summary" --split val
 ```
 
-各组的 `execution.json` 记录完成状态。固定阈值的指标在 `validation_best.json`。`val_metrics.json` 与汇总 CSV 使用各组在验证集选出的阈值，比较时把阈值一并记录。锁定待报告的模型和指标口径后，将第 5 节的 `$run` 指向待评价的实验组，例如 `$ablationRoot/E8_seed42`，再冻结并测试。
+各组的 `execution.json` 记录完成状态。固定阈值的指标在 `validation_best.json`。`val_metrics.json` 与汇总 CSV 使用各组在验证集选出的阈值，比较时把阈值一并记录。锁定待报告的模型和指标口径后，用 `set "CTN_RUN=%CTN_ABLATION_ROOT%\E8_seed42"` 选中待评价的实验组，再按第 5 节冻结并测试。
 
 只有 CPU 时，可以用第 2 节生成的 E0 配置作为共同基底，在同一 checkout 执行 E0 和 E1 两组。
 
-```powershell
-python -m scripts.run_ablation --matrix configs/ablation.yaml --base-config results/tutorial/smoke_first/E0_seed42/config.yaml --experiments 'E0,E1' --output-root results/tutorial/ablation_cpu --resume
+```bat
+python -m scripts.run_ablation --matrix "configs\ablation.yaml" --base-config "results\tutorial\smoke_first\E0_seed42\config.yaml" --experiments "E0,E1" --output-root "results\tutorial\ablation_cpu" --resume
 ```
 
 这条路线在相同合成数据和一轮预算下演示对照设置。
