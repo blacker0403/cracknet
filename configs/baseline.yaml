@@ -4,7 +4,6 @@ seed: 42
 output_dir: ../results/ablation/baseline/E0_seed42
 data:
   root: ../data/CRACK500
-  manifest_dir: ../data/CRACK500/manifests
   version: archive_crops_scene_disjoint_reviewed_v2_standard_layout_v1
   synthetic: false
   splits:
@@ -13,12 +12,7 @@ data:
     test: {images: test/images, masks: test/masks}
   image_glob: '*.jpg'
   mask_pattern: '{stem}.png'
-  source_id_regex: '(?P<source>.+)_\d+_\d+'
   label_map: null
-  require_source_ids: true
-  fixed_manifests: true
-  split_lists: null
-  split_path_map: null
   crop_size: 384
   foreground_crop_probability: 0.5
   augment: true

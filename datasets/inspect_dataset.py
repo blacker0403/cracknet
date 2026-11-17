@@ -2,12 +2,18 @@ import argparse
 import json
 from pathlib import Path
 
-from datasets.manifest import scan_split, audit, write_manifests, load_manifests, read_image, read_mask, verify_split_lists
+from datasets.manifest import (folder_samples, scan_split, audit, write_manifests, load_manifests,
+                               read_image, read_mask, verify_split_lists)
 from utils.config import load_config
 
 
 def inspect(cfg, existing=False):
     d = cfg['data']
+    if not d.get('manifest_dir'):
+        if existing:
+            raise ValueError('--existing-manifests requires an archived config with data.manifest_dir.')
+        return {'valid': True, 'splits': {split: {'count': len(rows)} for split, rows in folder_samples(d).items()},
+                'dataset_version': d['version'], 'limitation': 'Image folder counts only.'}
     manifests = load_manifests(d['manifest_dir']) if existing or d.get('fixed_manifests', False) else {
         split: scan_split(d['root'], spec, d['mask_pattern'], d['image_glob'], d['source_id_regex'])
         for split, spec in d['splits'].items()}
@@ -21,7 +27,7 @@ def inspect(cfg, existing=False):
     (output / 'audit.json').write_text(json.dumps(report, indent=2))
     from utils.artifacts import dataset_profile
     dataset_profile(report, output)
-    # Save invalid manifests for diagnosis too; train independently re-audits and refuses them.
+    # Save archived manifests and their diagnostics for the legacy protocol.
     write_manifests(manifests, output)
     from utils.visualization import dataset_preview
     for split, rows in manifests.items():

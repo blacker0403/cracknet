@@ -54,7 +54,7 @@ python tutorial_tools/inspect_model.py --config configs/tutorial/local_e8.yaml -
 
 ## 3. 准备真实数据和编码器权重
 
-可使用课程整理的 CRACK500 图像、标签及三份清单，其划分为 train 1841、val 341、test 1124。自行下载时，作者 README 提供数据下载入口。保留所选数据版本的划分，按下方布局整理图像和标签，再按本节步骤生成清单并登记数据版本。[CRACK500 作者仓库](https://github.com/fyangneil/pavement-crack-detection)
+课程整理的 CRACK500 包含 train 1841、val 341、test 1124 对图像和标签。自行下载时，按下方目录整理。组建自己的数据集时，把同一原图的裁块或同一路段的连续画面划入同一集合。[CRACK500 作者仓库](https://github.com/fyangneil/pavement-crack-detection)
 
 ```text
 cracknet/
@@ -62,27 +62,23 @@ cracknet/
     train/images/     train/masks/
     val/images/       val/masks/
     test/images/      test/masks/
-    manifests/train.jsonl
-    manifests/val.jsonl
-    manifests/test.jsonl
   weights/resnet34-b627a593.pth
 ```
 
-JSONL 每行对应一对图像和标签。两个文件路径相对 `data/CRACK500`。掩码为与图像同尺寸的单通道 PNG，像素为 0/1 或 0/255。同一原图、视频或采集场景的相关样本使用统一的 `source_id`，按来源组划入同一个集合。
+将 `road001.jpg` 放在对应集合的 `images/`，将 `road001.png` 放在同组的 `masks/`。掩码采用同尺寸的单通道 PNG，像素为 0/1 或 0/255。三个集合放好后即可运行第 4 节的训练。程序按目录取图，读取到缺失、损坏或尺寸不一致的样本时报告文件路径。
 
-```json
-{"id":"road001_0_0","image":"train/images/road001_0_0.jpg","mask":"train/masks/road001_0_0.png","source_id":"road001"}
+自己的数据也可放在 `data/MyCracks`，在 `configs/tutorial/my_cracks_e0.yaml` 保存以下配置。训练时将 `--config` 指向该文件，消融时将 `--base-config` 指向它。默认扫描 JPG 原图。如原图是 PNG，在 `data` 下设置 `image_glob: '*.png'`。
+
+```yaml
+extends: local_e0.yaml
+experiment: my_cracks_e0
+output_dir: ../../results/tutorial/my_cracks_e0_seed42
+data:
+  root: ../../data/MyCracks
+  version: my_cracks_v1
 ```
 
-从已划分的 JPG 和同名 PNG 扫描生成清单时，在 `configs/tutorial/local_e0.yaml` 的 `data` 下写入数据的 `version`，设置 `fixed_manifests: false` 并保留 `workers: 0`。默认文件名规则把 `road001_0_0` 识别成 `road001` 来源组。其他命名规则需要提供准确的 `data.source_id_regex`，也可以手工填写 manifest。E8 配置继承这个数据设置。
-
-```bat
-python -m datasets.inspect_dataset --config configs/tutorial/local_e0.yaml
-```
-
-检查 `manifests/audit.json` 和 `manifests/samples/`，确认划分、配对和标签后将 `fixed_manifests` 恢复为 `true`。已有课程清单可直接进入预检。
-
-预检检查本地权重文件。可从 torchvision 的权重地址下载一次。
+默认使用 ImageNet 编码器权重。可提前下载到本地，训练会读取该目录。
 
 ```bat
 if not exist "weights" mkdir "weights"
@@ -91,24 +87,17 @@ python -c "from urllib.request import urlretrieve; urlretrieve('https://download
 
 ## 4. 训练、续训与查看日志
 
-演练使用 E8 的两轮预算，实际遍历准备好的数据。它继承 384×384 裁剪、batch 4、梯度累积 4、FP16、AdamW 和初始学习率 0.0001。Windows 示例使用 `workers: 0`。
+数据放好后，在已激活环境的 Anaconda Prompt 进入仓库根目录，直接启动 E0 基线。
+
+```bat
+python -m scripts.train --config "configs\tutorial\local_e0.yaml"
+```
+
+两轮 E8 演练使用 384×384 裁剪、batch 4、梯度累积 4、FP16、AdamW 和初始学习率 0.0001，Windows 示例使用 `workers: 0`。跑完第 1 轮后退出，再从已保存的 epoch 恢复。要连续完成两轮，首次运行可省略 `--stop-after-epoch 1`。
 
 ```bat
 set "CTN_CFG=configs\tutorial\local_e8_warmup.yaml"
 set "CTN_RUN=results\tutorial\local_E8_2epochs_seed42"
-python -m scripts.preflight --config "%CTN_CFG%" --paths-only
-python -m scripts.preflight --config "%CTN_CFG%" --require-cuda
-```
-
-带 `--paths-only` 的命令检查数据根目录、清单和文件路径。带 `--require-cuda` 的命令生成数据审计与 `preflight.json`，确认 `ready_for_training` 为 `true` 后再训练。可先用一次合成批次探测显存，输出保存在新的 JSON 文件中。
-
-```bat
-python tutorial_tools/probe_model.py --config "%CTN_CFG%" --output "results\tutorial\first_gpu_probe.json"
-```
-
-跑完第 1 轮后退出，再从已经保存的 epoch 恢复。想连续完成两轮时，首次运行可以省略 `--stop-after-epoch 1`。
-
-```bat
 python -m scripts.train --config "%CTN_CFG%" --stop-after-epoch 1
 type "%CTN_RUN%\training_status.json"
 python -m scripts.train --config "%CTN_RUN%\config.yaml" --resume "%CTN_RUN%\last.pth"
@@ -129,7 +118,7 @@ type "%CTN_RUN%\training_status.json"
 python -m tensorboard.main --logdir results/tutorial --host 127.0.0.1 --port 6006
 ```
 
-正式训练起点见 `configs/tutorial/local_e0.yaml` 和 `configs/tutorial/local_e8.yaml`，默认最多 150 轮、早停耐心值 30。变更模型、学习率或数据时，从新结果目录启动。续训使用本次实验保存的配置和 `last.pth`，数据路径、清单与内容应匹配。
+正式训练起点见 `configs/tutorial/local_e0.yaml` 和 `configs/tutorial/local_e8.yaml`，默认最多 150 轮、早停耐心值 30。变更模型、学习率或数据时，从新结果目录启动。续训使用本次实验保存的配置和 `last.pth`，沿用同一组数据文件。目录模式使用文件路径、大小和修改时间识别变化。历史检查点继续使用其保存的配置和对应的原始数据协议。
 
 从已有 E8 分割权重开始一次微调时，将 `configs/tutorial/local_e8_warmup.yaml` 在同目录另存为 `local_e8_finetune.yaml`，把 `output_dir` 改成 `../../results/tutorial/local_E8_finetune_seed42`，在 `train` 下加一行 `lr: 0.00005`。沿用相同的模型结构，传入可信的、由本工程保存的检查点。
 
@@ -150,11 +139,11 @@ type "%CTN_RUN%\frozen.json"
 type "%CTN_RUN%\test_metrics.json"
 ```
 
-单图推理以清单中第一张测试图为例。`for /f` 从 JSONL 读取相对路径并存入 `CTN_IMAGE`，两行命令在 Anaconda Prompt 逐行执行。也可以直接把 `--input` 的值换成自己的图片或图片目录，`--output` 使用独立的空目录。
+单图推理直接指定图像。下面以课程测试集的一张图为例，可把 `CTN_IMAGE` 的值换成自己的图片路径或图片目录。`--output` 使用独立的空目录。
 
 ```bat
-for /f "delims=" %I in ('python -c "import json; print(json.loads(open('data/CRACK500/manifests/test.jsonl', encoding='utf-8').readline())['image'])"') do set "CTN_IMAGE=%I"
-python -m scripts.predict --config "%CTN_RUN%\config.yaml" --checkpoint "%CTN_RUN%\best_iou.pth" --input "data\CRACK500\%CTN_IMAGE%" --output "results\tutorial\prediction_first"
+set "CTN_IMAGE=data\CRACK500\test\images\20160222_080933_361_1.jpg"
+python -m scripts.predict --config "%CTN_RUN%\config.yaml" --checkpoint "%CTN_RUN%\best_iou.pth" --input "%CTN_IMAGE%" --output "results\tutorial\prediction_first"
 ```
 
 同一 run 的 `config.yaml`、`best_iou.pth` 与 `frozen.json` 配套使用。`*.mask.png` 为二值裂缝图，`*.overlay.png` 显示叠加位置，`*.probability.npy` 保存像素分数，`prediction_summary.csv` 汇总图像尺寸、预测与耗时。带标签的质量指标查看 `test_metrics.json`。迁移资产用于推理时，可以在配置副本调整存储路径，模型和评价设置须符合冻结记录。
@@ -237,8 +226,10 @@ python -m scripts.run_ablation --matrix "configs\ablation.yaml" --base-config "r
 |---|---|
 | Python 找不到 `scripts` 或配置文件 | 在含 `scripts/` 和 `configs/` 的仓库根目录运行 |
 | CUDA 为 `False` | 核对当前解释器、wheel 与驱动，或先执行 CPU 合成路线 |
-| `Dataset root missing` 或 `Missing pair` | 核对解压层级、清单路径、标签文件名及大小写 |
-| `pretrained_weights_ready: false` | 将对应编码器权重放入 `weights/` 后重新预检 |
+| `No images in` | 核对该集合的 `images/` 目录和配置中的 `data.image_glob` |
+| `Missing or unreadable mask` | 按报错路径补齐对应掩码，核对文件名主体及 PNG 后缀 |
+| `Image/mask shape mismatch` | 根据报错的两条路径找到原图和掩码，导出与原图同尺寸的标签 |
+| `ResNet34 weights failed` | 按第 3 节准备编码器权重 |
 | 训练或预测目录已有产物 | 续训保留原实验目录，新实验或新预测使用新目录 |
 | `Finish the configured training budget before freezing` | 查看训练状态并完成预算或早停流程 |
 

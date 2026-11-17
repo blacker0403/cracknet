@@ -48,13 +48,13 @@ def freeze(cfg, checkpoint):
         raise ValueError('Freeze the validation-IoU selected best_iou.pth only.')
     if (out / 'frozen.json').exists():
         raise FileExistsError('frozen.json already exists; freeze is immutable for this run.')
-    manifests, digest = checked_data(cfg)
     device = get_device(cfg['train']['device'])
     model, state = load_model(checkpoint, cfg, device)
+    samples, digest = checked_data(cfg, state)
     if state['manifest_hash'] != digest:
         raise ValueError('Dataset changed since training.')
     d = cfg['data']
-    dataset = Crack500(d['root'], manifests['val'], d['label_map'])
+    dataset = Crack500(d['root'], samples['val'], d['label_map'])
     result, _ = evaluate(model, dataset, cfg, device, search=True)
     dump_json(out / 'threshold_validation.json', result)
     record = {'checkpoint_sha256': file_digest(checkpoint), 'manifest_hash': digest,
@@ -73,11 +73,11 @@ def run_evaluation(cfg, checkpoint, split='val', corruption=None, baseline_check
     validate(cfg)
     torch.set_num_threads(cfg['train']['cpu_threads'])
     out = Path(cfg['output_dir'])
-    manifests, digest = checked_data(cfg)
     device = get_device(cfg['train']['device'])
     model, state = load_model(checkpoint, cfg, device)
+    samples, digest = checked_data(cfg, state)
     if state['manifest_hash'] != digest:
-        raise ValueError('Dataset content/manifests changed since training.')
+        raise ValueError('Dataset files changed since training.')
     frozen = None
     if split == 'test':
         path = out / 'frozen.json'
@@ -91,7 +91,7 @@ def run_evaluation(cfg, checkpoint, split='val', corruption=None, baseline_check
         raise ValueError('Robustness corruptions are test-only and cannot select a model.')
     threshold = frozen['threshold'] if frozen else cfg['evaluation']['threshold']
     d = cfg['data']
-    dataset = Crack500(d['root'], manifests[split], d['label_map'])
+    dataset = Crack500(d['root'], samples[split], d['label_map'])
     transform = corruption_transform(corruption, cfg['seed']) if corruption else None
     curve_data = {}
     result, rows = evaluate(model, dataset, cfg, device, threshold=threshold, search=split == 'val',

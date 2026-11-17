@@ -15,9 +15,10 @@ class Crack500(Dataset):
 
     def __getitem__(self, index):
         row = self.rows[index]
-        image, mask = read_image(self.root / row['image']), read_mask(self.root / row['mask'], self.label_map)
+        image_path, mask_path = self.root / row['image'], self.root / row['mask']
+        image, mask = read_image(image_path), read_mask(mask_path, self.label_map)
         if image.shape[:2] != mask.shape:
-            raise ValueError(f'Image/mask shape mismatch: {row["id"]}')
+            raise ValueError(f'Image/mask shape mismatch: {image_path} {image.shape[:2]} / {mask_path} {mask.shape}')
         x, y = self.transform(image, mask) if self.transform else (image_tensor(image), torch.from_numpy(mask[None]).float())
         sample = {'image': x, 'mask': y, 'id': row['id']}
         if 'domain' in row:

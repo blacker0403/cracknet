@@ -10,7 +10,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from datasets.crack500 import Crack500
 from datasets.transforms import TrainTransform
-from datasets.manifest import load_manifests, audit, manifest_digest, verify_split_lists, verify_manifest_paths
+from datasets.manifest import (FOLDER_DIGEST_PREFIX, folder_samples, folder_digest, load_manifests,
+                               audit, manifest_digest, verify_split_lists, verify_manifest_paths)
 from models.cracktoponet import build_model
 from losses.combined import CombinedLoss
 from utils.config import load_config, validate, save_config, fingerprint
@@ -25,8 +26,13 @@ from utils.metrics import pixel_scores
 from utils.resume_policy import check_resume_config, approved_checkpoint_config, record_resume_change
 
 
-def checked_data(cfg):
+def checked_data(cfg, checkpoint=None):
     d = cfg['data']
+    if not cfg.get('multidomain') and (checkpoint is None or checkpoint['manifest_hash'].startswith(FOLDER_DIGEST_PREFIX)):
+        samples = folder_samples(d)
+        return samples, folder_digest(d, samples)
+
+    # Keep the original data signature for accepted legacy checkpoints and LODO runs.
     manifests = load_manifests(d['manifest_dir'])
     verify_manifest_paths(d['root'], manifests)
     if cfg.get('multidomain'):
@@ -74,13 +80,13 @@ def train(cfg, resume=None, stop_after_epoch=None, init_checkpoint=None, allow_r
     seed_everything(cfg['seed'], cfg['train']['deterministic'])
     if cfg['train'].get('matmul_precision'):
         torch.set_float32_matmul_precision(cfg['train']['matmul_precision'])
-    print('[preparation] auditing manifests and source hashes (CPU/I/O; GPU may be idle).', flush=True)
-    manifests, digest = checked_data(cfg)
-    device = get_device(cfg['train']['device'])
     state = read_checkpoint(resume) if resume else None
+    samples, digest = checked_data(cfg, state)
+    print('[data] ' + ', '.join(f'{split}={len(rows)}' for split, rows in samples.items()), flush=True)
+    device = get_device(cfg['train']['device'])
     if state:
         if state['manifest_hash'] != digest:
-            raise ValueError('Resume requires identical manifests and data content.')
+            raise ValueError('Dataset files changed since training. Resume with the original dataset.')
         if not approved_checkpoint_config(state['config'], cfg):
             check_resume_config(state['config'], cfg, allow_resume_changes)
             record_resume_change(state['config'], cfg, resume, state['epoch'], state.get('bad_epochs', 0), reset_early_stopping)
@@ -100,18 +106,18 @@ def train(cfg, resume=None, stop_after_epoch=None, init_checkpoint=None, allow_r
     scaler = torch.amp.GradScaler('cuda', enabled=amp and amp_dtype == torch.float16)
     generator = torch.Generator().manual_seed(cfg['seed'])
     d = cfg['data']
-    train_set = Crack500(d['root'], manifests['train'], d['label_map'],
+    train_set = Crack500(d['root'], samples['train'], d['label_map'],
                         TrainTransform(d['crop_size'], d['foreground_crop_probability'], d['augment'],
                                        reflect_mask_padding=d.get('reflect_mask_padding', False)))
-    val_set = Crack500(d['root'], manifests['val'], d['label_map'])
+    val_set = Crack500(d['root'], samples['val'], d['label_map'])
     sampler = None
     if cfg.get('multidomain'):
         from datasets.multidomain import domain_sampler, domain_probabilities
         epoch_samples = cfg['train']['steps_per_epoch'] * cfg['train']['batch_size'] * cfg['train']['accumulation_steps']
-        sampler = domain_sampler(manifests['train'], cfg['multidomain']['sampling'], epoch_samples, generator)
+        sampler = domain_sampler(samples['train'], cfg['multidomain']['sampling'], epoch_samples, generator)
         dump_json(out / 'sampling.json', {'method': cfg['multidomain']['sampling'], 'samples_per_epoch': epoch_samples,
                   'optimizer_steps_per_epoch': cfg['train']['steps_per_epoch'],
-                  'domain_probabilities': domain_probabilities(manifests['train'], cfg['multidomain']['sampling']),
+                  'domain_probabilities': domain_probabilities(samples['train'], cfg['multidomain']['sampling']),
                   'within_domain': 'uniform images with replacement'})
     epoch_samples = len(sampler) if sampler is not None else len(train_set)
     loader_options = {'prefetch_factor': d.get('prefetch_factor', 2)} if d['workers'] else {}

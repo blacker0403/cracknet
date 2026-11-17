@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff', '.webp'}
+FOLDER_DIGEST_PREFIX = 'folders-v1:'
 MANIFEST_EXAMPLE = {'id': 'sample01', 'image': 'train/images/sample01.jpg',
                     'mask': 'train/masks/sample01.png', 'source_id': 'original01'}
 
@@ -36,7 +37,9 @@ def read_image(path):
 
 def read_mask(path, label_map=None):
     mask = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
-    if mask is None or mask.ndim != 2:
+    if mask is None:
+        raise ValueError(f'Missing or unreadable mask: {path}')
+    if mask.ndim != 2:
         raise ValueError(f'Expected readable single-channel mask: {path}')
     values = set(np.unique(mask).tolist())
     if label_map is None:
@@ -52,34 +55,56 @@ def read_mask(path, label_map=None):
     return out
 
 
-def scan_split(root, split_cfg, pattern, image_glob='**/*', source_regex=None):
+def scan_split(root, split_cfg, pattern, image_glob='**/*', source_regex=None, *, check_pairs=True):
     root = Path(root).resolve()
     image_dir, mask_dir = root / split_cfg['images'], root / split_cfg['masks']
-    images = sorted(p for p in image_dir.glob(image_glob) if p.suffix.lower() in EXTENSIONS)
+    images = sorted(p for p in image_dir.glob(image_glob) if p.suffix.lower() in EXTENSIONS and p.is_file())
     if not images:
-        raise ValueError(f'No images in {image_dir}. Example manifest row: {MANIFEST_EXAMPLE}')
+        raise ValueError(f'No images in {image_dir} matching {image_glob!r}.')
     rows, used_masks = [], set()
     for image in images:
         rel = image.relative_to(image_dir)
         mask = mask_dir / pattern.format(stem=image.stem, name=image.name,
                                          relative_stem=str(rel.with_suffix('')), suffix=image.suffix)
-        if not mask.is_file():
-            raise ValueError(f'Missing pair: {image} -> {mask}. Set mask_pattern or supply JSONL: {MANIFEST_EXAMPLE}')
-        if mask.resolve() in used_masks:
-            raise ValueError(f'Multiple images matched one mask: {mask}')
-        used_masks.add(mask.resolve())
+        if check_pairs:
+            if not mask.is_file():
+                raise ValueError(f'Missing pair: {image} -> {mask}. Set mask_pattern or supply JSONL: {MANIFEST_EXAMPLE}')
+            if mask.resolve() in used_masks:
+                raise ValueError(f'Multiple images matched one mask: {mask}')
+            used_masks.add(mask.resolve())
         match = re.fullmatch(source_regex, str(rel.with_suffix(''))) if source_regex else None
         if source_regex and (match is None or 'source' not in match.groupdict()):
             raise ValueError(f'source_id_regex must full-match and contain (?P<source>...): {rel}')
         rows.append({'id': rel.with_suffix('').as_posix(), 'image': image.relative_to(root).as_posix(),
                      'mask': mask.relative_to(root).as_posix(), 'source_id': match['source'] if match else None})
-    candidates = {p.resolve() for p in mask_dir.rglob('*') if p.suffix.lower() in EXTENSIONS}
-    if mask_dir.resolve() == image_dir.resolve():
-        candidates -= {p.resolve() for p in images}
-    extra = candidates - used_masks
-    if extra:
-        raise ValueError(f'{len(extra)} unpaired masks, example: {next(iter(extra))}')
+    if check_pairs:
+        candidates = {p.resolve() for p in mask_dir.rglob('*') if p.suffix.lower() in EXTENSIONS}
+        if mask_dir.resolve() == image_dir.resolve():
+            candidates -= {p.resolve() for p in images}
+        extra = candidates - used_masks
+        if extra:
+            raise ValueError(f'{len(extra)} unpaired masks, example: {next(iter(extra))}')
     return rows
+
+
+def folder_samples(data):
+    return {split: scan_split(data['root'], data['splits'][split], data['mask_pattern'],
+                              data['image_glob'], check_pairs=False)
+            for split in ('train', 'val', 'test')}
+
+
+def folder_digest(data, samples):
+    """Fingerprint folder entries using metadata, without opening sample files."""
+    root = Path(data['root'])
+    directories = {root / spec[role] for spec in data['splits'].values() for role in ('images', 'masks')}
+    entries = []
+    for directory in sorted(directories):
+        for path in sorted(directory.rglob('*')):
+            if path.suffix.lower() in EXTENSIONS and path.is_file():
+                info = path.stat()
+                entries.append((path.relative_to(root).as_posix(), info.st_size, info.st_mtime_ns))
+    data_hash = hashlib.sha256(json.dumps([samples, entries], sort_keys=True).encode()).hexdigest()
+    return FOLDER_DIGEST_PREFIX + data_hash
 
 
 def verify_split_lists(root, manifests, split_lists, path_map=None):
